@@ -87,7 +87,7 @@ def read_from_bucket(file_path: str, file_name:str=None, bucket_id: str = None, 
         if stack and lazy:
             return reduce(lambda x,y: x.vstack(y), [df.collect() for df in dfs])
         elif stack:
-            reduce(lambda x,y: x.vstack(y), dfs)
+            return reduce(lambda x,y: x.vstack(y), dfs)
         else:
             return dfs
 
