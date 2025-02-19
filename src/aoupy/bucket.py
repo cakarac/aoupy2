@@ -31,7 +31,7 @@ def copy_from_bucket(file_path: str, bucket_id: str = None) -> None:
     os.system(f"gsutil cp '{bucket_id}/{file_path}' .")
     print(f'[INFO] {file_path} is successfully downloaded into your working space')
         
-def read_from_bucket(file_path: str, file_name:str=None, bucket_id: str = None, lazy: bool = True, stack = False, cache=False) -> pl.DataFrame:
+def read_from_bucket(file_path: str, file_name:str=None, bucket_id: str = None, lazy: bool = True, stack = False) -> pl.DataFrame:
     """Copies and reads a csv file from bucket
     
     Parameters:
@@ -62,23 +62,16 @@ def read_from_bucket(file_path: str, file_name:str=None, bucket_id: str = None, 
         os.makedirs(f'bucket_io/{file_path}')
     
     if file_name is not None:
-        if not cache or not os.path.isfile({file_path}/{file_name}):
-            os.system(f"gsutil cp '{bucket_id}/{file_path}/{file_name}' 'bucket_io/{file_path}'")
+        os.system(f"gcloud storage cp '{bucket_id}/{file_path}/{file_name}' 'bucket_io/{file_path}'")
         if lazy:
             return pl.scan_csv(f'bucket_io/{file_path}/{file_name}')
         else:
             return pl.read_csv(f'bucket_io/{file_path}/{file_name}')
     else:
         file_targets = ls_bucket(target=file_path, bucket_id=bucket_id, return_list=True)
-        if cache:
-            file_targets_subset = list(filter(lambda x: not os.path.isfile(x.replace(bucket_id, "bucket_io")), file_targets))
-        else:
-            file_targets_subset = file_targets
-        copy_command = "gsutil cp '{{file_target}}' 'bucket_io/{file_path}'".format(file_path=file_path)
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            executor.map(lambda x: os.system(copy_command.format(file_target = x)), file_targets_subset)
-        dfs = []
+        os.system(f"gcloud storage cp '{bucket_id}/{file_path}/*.csv' 'bucket_io/{file_path}'")
         
+        dfs = []
         for f in file_targets:
             if lazy:
                 dfs.append(pl.scan_csv(f.replace(bucket_id, "bucket_io")))
@@ -115,7 +108,10 @@ def copy_to_bucket(file_name: str, target: str, bucket_id: str = None) -> None:
     
     if bucket_id == None:
        bucket_id = os.getenv('WORKSPACE_BUCKET')
-        
+    target_folder = target.split("/")
+    if len(target_folder)>1 and not os.path.isdir("/".join(target_folder[:-1])):
+        os.makedirs("/".join(target_folder[:-1]))
+
     os.system(f"gsutil cp {file_name} {bucket_id}/{target}")
 
 def ls_bucket(target: str = None, bucket_id: str = None, return_list:bool=False) -> None:
