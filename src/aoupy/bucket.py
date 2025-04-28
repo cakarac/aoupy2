@@ -62,9 +62,9 @@ def read_from_bucket(file_name: str = None,
     
     if file_name is not None:
         if file_folder is None:
-            os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io/{file_path}'")
+            os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
         else:
-            os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io/{file_path}'")
+            os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io/{file_folder}'")
         if lazy:
             return pl.scan_csv(f'bucket_io/{file_folder}/{file_name}')
         else:
