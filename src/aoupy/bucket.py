@@ -31,45 +31,47 @@ def copy_from_bucket(file_path: str, bucket_id: str = None) -> None:
     os.system(f"gsutil cp '{bucket_id}/{file_path}' .")
     print(f'[INFO] {file_path} is successfully downloaded into your working space')
         
-def read_from_bucket(file_path: str, file_name:str=None, bucket_id: str = None, lazy: bool = True, stack = False) -> pl.DataFrame:
+def read_from_bucket(file_name: str = None, 
+                    file_folder: str = None, 
+                    bucket_id: str = None, 
+                    lazy: bool = True, 
+                    stack: bool = False) -> pl.DataFrame:
     """Copies and reads a csv file from bucket
     
-    Parameters:
-    -----------
-    file_path: str
-        Path to the csv file to read from bucket
-    bucket_id: [Optional] str
-        The bucket id to read the file from. Defaults to environment variable WORKSPACE_BUCKET.
-    lazy: [Optional] bool
-        Either to read or scan csv file. Check polars documentation for this behaviour. Defaults to True.
-    
-    Returns:
-    -------
-    Polars Dataframe is returned. Read might be set to lazy to scan the csv instead of reading. Check polars documentation for this behaviour.
+    :param file_name: the name of the file that is in the file folder
+    :param file_folder: the folder the file is in
+    :param bucket_id: The bucket id to read the file from. Defaults to environment variable WORKSPACE_BUCKET.
+    :param lazy: Either to read or scan csv file. Check polars documentation for this behaviour. Defaults to True.
+    :returns: Polars Dataframe is returned. Read might be set to lazy to scan the csv instead of reading. Check polars documentation for this behaviour.
 
     Example:
     --------
-    df = read_from_bucket('datasets/fitbit.csv')
+    df = read_from_bucket(file_name = 'fitbit.csv', file_folder = 'datasets')
     """
-    
+    if file_name is None and file_folder is None:
+        raise ValueError("Neither file_path nor file_folder is specified")
+
     if file_name is not None and file_name.split(".")[-1] != "csv":
             raise ValueError("The specified file is not csv format hence cannot be loaded")
     
     if bucket_id == None:
         bucket_id = os.getenv('WORKSPACE_BUCKET')
 
-    if not os.path.isdir(f'bucket_io/{file_path}'):
-        os.makedirs(f'bucket_io/{file_path}')
+    if file_folder is not None and not os.path.isdir(f'bucket_io/{file_folder}'):
+        os.makedirs(f'bucket_io/{file_folder}')
     
     if file_name is not None:
-        os.system(f"gcloud storage cp '{bucket_id}/{file_path}/{file_name}' 'bucket_io/{file_path}'")
-        if lazy:
-            return pl.scan_csv(f'bucket_io/{file_path}/{file_name}')
+        if file_folder is None:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io/{file_path}'")
         else:
-            return pl.read_csv(f'bucket_io/{file_path}/{file_name}')
+            os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io/{file_path}'")
+        if lazy:
+            return pl.scan_csv(f'bucket_io/{file_folder}/{file_name}')
+        else:
+            return pl.read_csv(f'bucket_io/{file_folder}/{file_name}')
     else:
-        file_targets = ls_bucket(target=file_path, bucket_id=bucket_id, return_list=True)
-        os.system(f"gcloud storage cp '{bucket_id}/{file_path}/*.csv' 'bucket_io/{file_path}'")
+        file_targets = ls_bucket(target=file_folder, bucket_id=bucket_id, return_list=True)
+        os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/*.csv' 'bucket_io/{file_folder}'")
         
         dfs = []
         for f in file_targets:
