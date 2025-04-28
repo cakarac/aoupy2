@@ -63,16 +63,16 @@ def read_from_bucket(file_name: str = None,
     if file_name is not None:
         if file_folder is None and lazy:
             os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
-            return pl.scan_csv(f'bucket_io/{file_name}')
+            return pl.scan_csv(f'bucket_io/{file_name}', infer_schema=False)
         elif file_folder is not None and lazy:
             os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io/{file_folder}'")
-            return pl.scan_csv(f'bucket_io/{file_folder}/{file_name}')
+            return pl.scan_csv(f'bucket_io/{file_folder}/{file_name}', infer_schema=False)
         elif file_folder is None and not lazy:
             os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
-            return pl.read_csv(f'bucket_io/{file_name}')
+            return pl.read_csv(f'bucket_io/{file_name}', infer_schema=False)
         elif file_folder is not None and not lazy:
             os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io'")
-            return pl.read_csv(f'bucket_io/{file_folder}/{file_name}')
+            return pl.read_csv(f'bucket_io/{file_folder}/{file_name}', infer_schema=False)
     else:
         file_targets = ls_bucket(target=file_folder, bucket_id=bucket_id, return_list=True)
         os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/*.csv' 'bucket_io/{file_folder}'")
@@ -80,9 +80,9 @@ def read_from_bucket(file_name: str = None,
         dfs = []
         for f in file_targets:
             if lazy:
-                dfs.append(pl.scan_csv(f.replace(bucket_id, "bucket_io")))
+                dfs.append(pl.scan_csv(f.replace(bucket_id, "bucket_io"), infer_schema=False))
             else:
-                dfs.append(pl.read_csv(f.replace(bucket_id, "bucket_io")))
+                dfs.append(pl.read_csv(f.replace(bucket_id, "bucket_io"), infer_schema=False))
         if stack and lazy:
             return reduce(lambda x,y: x.vstack(y), [df.collect() for df in dfs])
         elif stack:
