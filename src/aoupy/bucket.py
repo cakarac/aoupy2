@@ -61,13 +61,17 @@ def read_from_bucket(file_name: str = None,
         os.makedirs(f'bucket_io/{file_folder}')
     
     if file_name is not None:
-        if file_folder is None:
+        if file_folder is None and lazy:
             os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
-        else:
+            return pl.scan_csv(f'bucket_io/{file_name}')
+        elif file_folder is not None and lazy:
             os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io/{file_folder}'")
-        if lazy:
             return pl.scan_csv(f'bucket_io/{file_folder}/{file_name}')
-        else:
+        elif file_folder is None and not lazy:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
+            return pl.read_csv(f'bucket_io/{file_name}')
+        elif file_folder is not None and not lazy:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io'")
             return pl.read_csv(f'bucket_io/{file_folder}/{file_name}')
     else:
         file_targets = ls_bucket(target=file_folder, bucket_id=bucket_id, return_list=True)
