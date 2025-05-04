@@ -1,7 +1,10 @@
 import os
+import subprocess
+from functools import reduce
+from concurrent.futures import ThreadPoolExecutor
 import polars as pl
-from polars import DataFrame
-
+        
+    
 def copy_from_bucket(file_path: str, bucket_id: str = None) -> None:
     """
     Copies a file from specified bucket and path into the enviroment workspace.
@@ -28,40 +31,65 @@ def copy_from_bucket(file_path: str, bucket_id: str = None) -> None:
     os.system(f"gsutil cp '{bucket_id}/{file_path}' .")
     print(f'[INFO] {file_path} is successfully downloaded into your working space')
         
-def read_from_bucket(file_path: str, bucket_id: str = None, lazy: bool = True) -> DataFrame:
+def read_from_bucket(file_name: str = None, 
+                    file_folder: str = None, 
+                    bucket_id: str = None, 
+                    lazy: bool = True, 
+                    stack: bool = False) -> pl.DataFrame:
     """Copies and reads a csv file from bucket
     
-    Parameters:
-    -----------
-    file_path: str
-        Path to the csv file to read from bucket
-    bucket_id: [Optional] str
-        The bucket id to read the file from. Defaults to environment variable WORKSPACE_BUCKET.
-    lazy: [Optional] bool
-        Either to read or scan csv file. Check polars documentation for this behaviour. Defaults to True.
-    
-    Returns:
-    -------
-    Polars Dataframe is returned. Read might be set to lazy to scan the csv instead of reading. Check polars documentation for this behaviour.
+    :param file_name: the name of the file that is in the file folder
+    :param file_folder: the folder the file is in
+    :param bucket_id: The bucket id to read the file from. Defaults to environment variable WORKSPACE_BUCKET.
+    :param lazy: Either to read or scan csv file. Check polars documentation for this behaviour. Defaults to True.
+    :returns: Polars Dataframe is returned. Read might be set to lazy to scan the csv instead of reading. Check polars documentation for this behaviour.
 
     Example:
     --------
-    df = read_from_bucket('datasets/fitbit.csv')
+    df = read_from_bucket(file_name = 'fitbit.csv', file_folder = 'datasets')
     """
-    
-    if file_path.split(".")[-1] != "csv":
+    if file_name is None and file_folder is None:
+        raise ValueError("Neither file_path nor file_folder is specified")
+
+    if file_name is not None and file_name.split(".")[-1] != "csv":
             raise ValueError("The specified file is not csv format hence cannot be loaded")
     
     if bucket_id == None:
         bucket_id = os.getenv('WORKSPACE_BUCKET')
 
-    os.system(f"gsutil cp '{bucket_id}/{file_path}' 'bucket_io/{file_path}'")
-    print(f'[INFO] {file_path} is successfully downloaded into bucket_io folder')
+    if file_folder is not None and not os.path.isdir(f'bucket_io/{file_folder}'):
+        os.makedirs(f'bucket_io/{file_folder}')
     
-    if lazy:
-        return pl.scan_csv(f'bucket_io/{file_path}')
+    if file_name is not None:
+        if file_folder is None and lazy:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
+            return pl.scan_csv(f'bucket_io/{file_name}', infer_schema=False)
+        elif file_folder is not None and lazy:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io/{file_folder}'")
+            return pl.scan_csv(f'bucket_io/{file_folder}/{file_name}', infer_schema=False)
+        elif file_folder is None and not lazy:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_name}' 'bucket_io'")
+            return pl.read_csv(f'bucket_io/{file_name}', infer_schema=False)
+        elif file_folder is not None and not lazy:
+            os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/{file_name}' 'bucket_io'")
+            return pl.read_csv(f'bucket_io/{file_folder}/{file_name}', infer_schema=False)
     else:
-        return pl.read_csv(f'bucket_io/{file_path}')
+        file_targets = ls_bucket(target=file_folder, bucket_id=bucket_id, return_list=True)
+        os.system(f"gcloud storage cp '{bucket_id}/{file_folder}/*.csv' 'bucket_io/{file_folder}'")
+        
+        dfs = []
+        for f in file_targets:
+            if lazy:
+                dfs.append(pl.scan_csv(f.replace(bucket_id, "bucket_io"), infer_schema=False))
+            else:
+                dfs.append(pl.read_csv(f.replace(bucket_id, "bucket_io"), infer_schema=False))
+        if stack and lazy:
+            return reduce(lambda x,y: x.vstack(y), [df.collect() for df in dfs])
+        elif stack:
+            return reduce(lambda x,y: x.vstack(y), dfs)
+        else:
+            return dfs
+
 
 def copy_to_bucket(file_name: str, target: str, bucket_id: str = None) -> None:
     """Copies a file from enviroment workspace to designated bucket folder
@@ -86,10 +114,13 @@ def copy_to_bucket(file_name: str, target: str, bucket_id: str = None) -> None:
     
     if bucket_id == None:
        bucket_id = os.getenv('WORKSPACE_BUCKET')
-        
+    target_folder = target.split("/")
+    if len(target_folder)>1 and not os.path.isdir("/".join(target_folder[:-1])):
+        os.makedirs("/".join(target_folder[:-1]))
+
     os.system(f"gsutil cp {file_name} {bucket_id}/{target}")
 
-def ls_bucket(target: str = None, bucket_id: str = None) -> None:
+def ls_bucket(target: str = None, bucket_id: str = None, return_list:bool=False) -> None:
     """List the files in the given directory in the given bucket
     
     Parameters:
@@ -112,9 +143,14 @@ def ls_bucket(target: str = None, bucket_id: str = None) -> None:
        bucket_id = os.getenv('WORKSPACE_BUCKET')
     
     if target == None:
-        os.system(f"gsutil ls {bucket_id}")
+        cmd = f"gsutil ls {bucket_id}"
     else:
-        os.system(f"gsutil ls {bucket_id}/{target}")
+        cmd = f"gsutil ls {bucket_id}/{target}"
+    
+    if return_list:
+        return subprocess.check_output(cmd, shell=True).decode('utf-8').split("\n")[:-1]
+    else:
+        os.system(cmd)
 
 def remove_from_bucket(file_path: str, bucket_id:str = None) -> None:
     """Removes the file from the bucket
@@ -139,7 +175,7 @@ def remove_from_bucket(file_path: str, bucket_id:str = None) -> None:
        bucket_id = os.getenv('WORKSPACE_BUCKET')
     os.system(f"gsutil rm {bucket_id}/{file_path}")
 
-def write_to_bucket(file: DataFrame, target: str, bucket_id: str =  None) -> None:
+def write_to_bucket(file: pl.DataFrame, target: str, bucket_id: str =  None) -> None:
     """Writes the given file to the given bucket location
     
     Parameters:
