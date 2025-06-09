@@ -1,0 +1,12 @@
+{
+	"name": "aoupy development on Ubuntu (Jammy)",
+	"build": { 
+		"context": "..",
+		"dockerfile": "Dockerfile"
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": ["ms-python.python"]
+		}
+	}
+}
